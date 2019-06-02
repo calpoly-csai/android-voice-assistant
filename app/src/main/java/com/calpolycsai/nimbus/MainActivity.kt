@@ -7,6 +7,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Bundle
 import android.os.CountDownTimer
+import android.support.design.widget.TabLayout
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 
@@ -14,25 +15,46 @@ import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.Toast
 
 import kotlinx.android.synthetic.main.activity_main.*
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 class MainActivity : AppCompatActivity() {
-    val PERMISSION_REQUEST_CODE = 1
+    private val requestCode = 1
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         setSupportActionBar(toolbar)
-
-        fab.setOnClickListener { view ->
+        var record_button = floatingActionButton
+        record_button.setOnClickListener { view ->
             // this is probably not the right way to do this
             val permissions = arrayOf(
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.READ_EXTERNAL_STORAGE,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE
             )
-            ActivityCompat.requestPermissions(this, permissions, PERMISSION_REQUEST_CODE)
+            ActivityCompat.requestPermissions(this, permissions, requestCode)
         }
+        configureTabLayout()
+    }
+    private fun configureTabLayout(){
+        val adapter = TabPageAdapter(supportFragmentManager, tab_layout.tabCount)
+        viewPager.adapter = adapter
+        viewPager.addOnPageChangeListener(TabLayout.TabLayoutOnPageChangeListener(tab_layout))
+        tab_layout.addOnTabSelectedListener(object: TabLayout.OnTabSelectedListener{
+            override fun onTabSelected(p0: TabLayout.Tab) {
+                viewPager.currentItem = p0.position
+            }
+
+            override fun onTabReselected(p0: TabLayout.Tab?) {
+            }
+
+            override fun onTabUnselected(p0: TabLayout.Tab?) {
+            }
+        })
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -54,7 +76,7 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
-            PERMISSION_REQUEST_CODE -> {
+            this.requestCode -> {
                 var denied = false
                 if (permissionNotGranted(Manifest.permission.RECORD_AUDIO)) {
                     denied = true
@@ -69,12 +91,25 @@ class MainActivity : AppCompatActivity() {
                     Log.i("Nimbus", "Write permission not granted!")
                 }
                 if (!denied) {
-                    recordAudio()
+                    prepareFile()
                 }
             }
         }
     }
-
+    private fun prepareFile(){
+        var gender = 'f'
+        var pronounciation_type = "iss"
+        var location = "house"
+        var noise = 'l'
+        var last = "last"
+        var first = "first"
+        var timestamp = DateTimeFormatter
+            .ofPattern("MMddyyyyHHmmss")
+            .withZone(ZoneOffset.UTC)
+            .format(Instant.now())
+        var file_name = "ww_${gender}_${pronounciation_type}_${location}_${noise}_${last}_${first}_${timestamp}"
+        recordAudio()
+    }
     private fun recordAudio() {
         val rate = 16000
         val channels = AudioFormat.CHANNEL_IN_MONO
@@ -95,13 +130,14 @@ class MainActivity : AppCompatActivity() {
             encoding,
             bufferSize
         )
-        val countDownTimer = object : CountDownTimer(2500, 100) {
+        val recordingDurationCountDownTimer = object : CountDownTimer(2500, 100) {
             override fun onTick(millisUntilFinished: Long) {
-                Log.v("V", "Mills passed: " + millisUntilFinished)
+                Log.v("V", "Mills passed: $millisUntilFinished")
             }
 
             override fun onFinish() {
                 recorder.stop()
+                Toast.makeText(this@MainActivity, "Done", Toast.LENGTH_SHORT).show()
                 Log.v("V", "Finished with recording")
             }
         }
@@ -109,9 +145,28 @@ class MainActivity : AppCompatActivity() {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO)
             Log.v("V", "Start recording")
             recorder.startRecording()
-            countDownTimer.start()
+            recordingDurationCountDownTimer.start()
         })
-        recordThread.start()
+        val startCountDownTimer = object : CountDownTimer(3000, 1000) {
+            override fun onTick(millisUntilFinished: Long) {
+                if(millisUntilFinished - 2000 > 0L){
+                    Toast.makeText(this@MainActivity, "3", Toast.LENGTH_SHORT).show()
+                }
+                else if(millisUntilFinished - 1000 > 0L){
+                    Toast.makeText(this@MainActivity, "2", Toast.LENGTH_SHORT).show()
+                }
+                else{
+                    Toast.makeText(this@MainActivity, "1", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onFinish() {
+                Log.v("V", "Finished with recording")
+                recordThread.start()
+                Toast.makeText(this@MainActivity, "Recording...", Toast.LENGTH_SHORT).show()
+            }
+        }
+        startCountDownTimer.start()
     }
 
     private fun permissionNotGranted(permission: String): Boolean =
