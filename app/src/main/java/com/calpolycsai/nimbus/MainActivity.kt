@@ -15,7 +15,6 @@ import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
-import android.widget.RadioGroup
 import android.widget.Toast
 
 import kotlinx.android.synthetic.main.activity_main.*
@@ -23,6 +22,11 @@ import kotlinx.android.synthetic.main.fragment_wake_word_record.*
 import org.threeten.bp.Instant
 import org.threeten.bp.ZoneOffset
 import org.threeten.bp.format.DateTimeFormatter
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 
 class MainActivity : AppCompatActivity() {
@@ -108,14 +112,19 @@ class MainActivity : AppCompatActivity() {
         val gender = gender.text
         val pronounciation_type = iss_or_us.text
         val location = "house"
-        val noise = radio_group_noise_level.checkedRadioButtonId
+        var noise:String = "M"
         val last = speaker_first_name.text
         val first = speaker_last_name.text
         val timestamp = DateTimeFormatter
             .ofPattern("MMddyyyyHHmmss")
             .withZone(ZoneOffset.UTC)
             .format(Instant.now())
-        val file_name = "ww_${gender}_${pronounciation_type}_${location}_${noise}_${last}_${first}_$timestamp"
+        when(radio_group_noise_level.checkedRadioButtonId){
+            R.id.noise_loud -> noise = "L"
+            R.id.noise_moderate -> noise = "M"
+            R.id.noise_quiet -> noise = "Q"
+        }
+        val file_name = "ww_${gender}_${pronounciation_type}_${location}_${noise}_${last}_${first}_$timestamp.wav"
         recordAudio(file_name)
     }
     private fun recordAudio(file_name : String) {
@@ -123,21 +132,27 @@ class MainActivity : AppCompatActivity() {
         val channels = AudioFormat.CHANNEL_IN_MONO
         val encoding = AudioFormat.ENCODING_PCM_16BIT
 
-        var bufferSize = AudioRecord.getMinBufferSize(
+        var buffer_size = AudioRecord.getMinBufferSize(
             rate,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT
         )
-        if (bufferSize == AudioRecord.ERROR || bufferSize == AudioRecord.ERROR_BAD_VALUE) {
-            bufferSize = rate * 2
+        if (buffer_size == AudioRecord.ERROR || buffer_size == AudioRecord.ERROR_BAD_VALUE) {
+            buffer_size = rate * 2
         }
         val recorder = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             rate,
             channels,
             encoding,
-            bufferSize
+            buffer_size
         )
+        var bytes_recorded = 0
+        var recording = true
+        var buffer: ByteBuffer = ByteBuffer.allocate(buffer_size)
+        val wavFile = File(this.filesDir, file_name)
+        val wavOut = FileOutputStream(wavFile)
+        createWavHeader(wavOut)
         val recordingDurationCountDownTimer = object : CountDownTimer(2500, 100) {
             override fun onTick(millisUntilFinished: Long) {
                 Log.v("V", "Mills passed: $millisUntilFinished")
@@ -145,6 +160,9 @@ class MainActivity : AppCompatActivity() {
 
             override fun onFinish() {
                 recorder.stop()
+                recording = false
+                wavOut.close()
+                updateWavHeader(wavFile)
                 Toast.makeText(this@MainActivity, "Done", Toast.LENGTH_SHORT).show()
                 Log.v("V", "Finished with recording")
             }
@@ -154,6 +172,10 @@ class MainActivity : AppCompatActivity() {
             Log.v("V", "Start recording")
             recorder.startRecording()
             recordingDurationCountDownTimer.start()
+            while(recording){
+                val read = recorder.read(buffer, 0, buffer.remaining())
+                wavOut.write(buffer.array(), 0 , read)
+            }
         })
         val startCountDownTimer = object : CountDownTimer(3000, 1000) {
             override fun onTick(millisUntilFinished: Long) {
@@ -175,6 +197,63 @@ class MainActivity : AppCompatActivity() {
             }
         }
         startCountDownTimer.start()
+    }
+
+    private fun updateWavHeader(wav: File) {
+        val sizes = ByteBuffer
+            .allocate(8)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            // There are probably a bunch of different/better ways to calculate
+            // these two given your circumstances. Cast should be safe since if the WAV is
+            // > 4 GB we've already made a terrible mistake.
+            .putInt((wav.length() - 8).toInt()) // ChunkSize
+            .putInt((wav.length() - 44).toInt()) // Subchunk2Size
+            .array();
+
+        val accessWave: RandomAccessFile = RandomAccessFile(wav, "rw")
+        //noinspection CaughtExceptionImmediatelyRethrown
+        // ChunkSize
+        accessWave.seek(4)
+        accessWave.write(sizes, 0, 4)
+        // Subchunk2Size
+        accessWave.seek(40);
+        accessWave.write(sizes, 4, 4)
+        accessWave.close()
+    }
+
+    private fun createWavHeader(wavOut: FileOutputStream) {
+        val channels:Short = 1
+        val bit_depth:Short = 16
+        val sample_rate = 16000
+        val littleBytes = ByteBuffer
+            .allocate(14)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putShort(channels)
+            .putInt(sample_rate)
+            .putInt(sample_rate * channels * (bit_depth / 8))
+            .putShort((channels * (bit_depth / 8)).toShort())
+            .putShort(bit_depth)
+            .array()
+        wavOut.write(
+            byteArrayOf(
+                // RIFF header
+                'R'.toByte(), 'I'.toByte(), 'F'.toByte(), 'F'.toByte(), // ChunkID
+                0, 0, 0, 0, // ChunkSize (must be updated later)
+                'W'.toByte(), 'A'.toByte(), 'V'.toByte(), 'E'.toByte(), // Format
+                // fmt subchunk
+                'f'.toByte(), 'm'.toByte(), 't'.toByte(), ' '.toByte(), // Subchunk1ID
+                16, 0, 0, 0, // Subchunk1Size
+                1, 0, // AudioFormat
+                littleBytes[0], littleBytes[1], // NumChannels
+                littleBytes[2], littleBytes[3], littleBytes[4], littleBytes[5], // SampleRate
+                littleBytes[6], littleBytes[7], littleBytes[8], littleBytes[9], // ByteRate
+                littleBytes[10], littleBytes[11], // BlockAlign
+                littleBytes[12], littleBytes[13], // BitsPerSample
+                // data subchunk
+                'd'.toByte(), 'a'.toByte(), 't'.toByte(), 'a'.toByte(), // Subchunk2ID
+                0, 0, 0, 0
+            )
+        )
     }
 
     private fun permissionNotGranted(permission: String): Boolean =

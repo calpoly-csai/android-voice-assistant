@@ -73,7 +73,8 @@
         <RadioButton
                 android:text="Loud"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:id="@+id/noise_loud" android:layout_weight="1"/>
+                android:layout_height="wrap_content" android:id="@+id/noise_loud" android:layout_weight="1"
+                />
     </RadioGroup>
     <TextView
             android:text="Ambient Noise Level"
