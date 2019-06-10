@@ -15,12 +15,15 @@ import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.RadioGroup
 import android.widget.Toast
 
 import kotlinx.android.synthetic.main.activity_main.*
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
+import kotlinx.android.synthetic.main.fragment_wake_word_record.*
+import org.threeten.bp.Instant
+import org.threeten.bp.ZoneOffset
+import org.threeten.bp.format.DateTimeFormatter
+
 
 class MainActivity : AppCompatActivity() {
     private val requestCode = 1
@@ -97,20 +100,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private fun prepareFile(){
-        var gender = 'f'
-        var pronounciation_type = "iss"
-        var location = "house"
-        var noise = 'l'
-        var last = "last"
-        var first = "first"
-        var timestamp = DateTimeFormatter
+        val noise_level_rg = radio_group_noise_level
+        val quiet_button = noise_quiet
+        val moderate_button = noise_moderate
+        val loud_button = noise_loud
+//        noise_level_rg.set
+        val gender = gender.text
+        val pronounciation_type = iss_or_us.text
+        val location = "house"
+        val noise = radio_group_noise_level.checkedRadioButtonId
+        val last = speaker_first_name.text
+        val first = speaker_last_name.text
+        val timestamp = DateTimeFormatter
             .ofPattern("MMddyyyyHHmmss")
             .withZone(ZoneOffset.UTC)
             .format(Instant.now())
-        var file_name = "ww_${gender}_${pronounciation_type}_${location}_${noise}_${last}_${first}_${timestamp}"
-        recordAudio()
+        val file_name = "ww_${gender}_${pronounciation_type}_${location}_${noise}_${last}_${first}_$timestamp"
+        recordAudio(file_name)
     }
-    private fun recordAudio() {
+    private fun recordAudio(file_name : String) {
         val rate = 16000
         val channels = AudioFormat.CHANNEL_IN_MONO
         val encoding = AudioFormat.ENCODING_PCM_16BIT
