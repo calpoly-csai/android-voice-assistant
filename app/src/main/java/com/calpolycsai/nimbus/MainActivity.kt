@@ -7,6 +7,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Bundle
 import android.os.CountDownTimer
+import android.os.Environment
 import android.support.design.widget.TabLayout
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
@@ -28,14 +29,13 @@ import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-
 class MainActivity : AppCompatActivity() {
     private val requestCode = 1
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         setSupportActionBar(toolbar)
-        var record_button = floatingActionButton
+        val record_button = floatingActionButton
         record_button.setOnClickListener { view ->
             // this is probably not the right way to do this
             val permissions = arrayOf(
@@ -104,15 +104,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private fun prepareFile(){
-        val noise_level_rg = radio_group_noise_level
         val quiet_button = noise_quiet
         val moderate_button = noise_moderate
         val loud_button = noise_loud
 //        noise_level_rg.set
-        val gender = gender.text
-        val pronounciation_type = iss_or_us.text
+        val gender_selection = if (gender.isChecked) "M" else "F"
+        val pronounciation_type = if (iss_or_us.isChecked) "ISS" else "US"
         val location = "house"
-        var noise:String = "M"
+        var noise:String = "M" //set a default for if no checkbox is checked
         val last = speaker_first_name.text
         val first = speaker_last_name.text
         val timestamp = DateTimeFormatter
@@ -124,7 +123,7 @@ class MainActivity : AppCompatActivity() {
             R.id.noise_moderate -> noise = "M"
             R.id.noise_quiet -> noise = "Q"
         }
-        val file_name = "ww_${gender}_${pronounciation_type}_${location}_${noise}_${last}_${first}_$timestamp.wav"
+        val file_name = "ww_${gender_selection}_${pronounciation_type}_${location}_${noise}_${last}_${first}_$timestamp.wav"
         recordAudio(file_name)
     }
     private fun recordAudio(file_name : String) {
@@ -149,11 +148,17 @@ class MainActivity : AppCompatActivity() {
         )
         var bytes_recorded = 0
         var recording = true
-        var buffer: ByteBuffer = ByteBuffer.allocate(buffer_size)
-        val wavFile = File(this.filesDir, file_name)
+        val buffer: ByteBuffer = ByteBuffer.allocate(buffer_size)
+
+
+        val dir = File(Environment.getExternalStorageDirectory().path + "/nimbus/files/")
+        dir.mkdirs()
+        val wavFile = File(dir, file_name)
+        wavFile.createNewFile()
+
         val wavOut = FileOutputStream(wavFile)
         createWavHeader(wavOut)
-        val recordingDurationCountDownTimer = object : CountDownTimer(2500, 100) {
+        val recordingDurationCountDownTimer = object : CountDownTimer(2432, 32) {
             override fun onTick(millisUntilFinished: Long) {
                 Log.v("V", "Mills passed: $millisUntilFinished")
             }
@@ -167,26 +172,27 @@ class MainActivity : AppCompatActivity() {
                 Log.v("V", "Finished with recording")
             }
         }
+        recorder.startRecording()
         val recordThread = Thread(Runnable {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO)
             Log.v("V", "Start recording")
-            recorder.startRecording()
-            recordingDurationCountDownTimer.start()
-            while(recording){
-                val read = recorder.read(buffer, 0, buffer.remaining())
-                wavOut.write(buffer.array(), 0 , read)
+            while(bytes_recorded < rate * 2.432 * 2){
+            val read = recorder.read(buffer.array(), 0, buffer.remaining(), AudioRecord.READ_BLOCKING)
+            if(read > 0) {
+                bytes_recorded += read
+                wavOut.write(buffer.array(), 0, read)
             }
+        }
+            recordingDurationCountDownTimer.start()
+
         })
+
         val startCountDownTimer = object : CountDownTimer(3000, 1000) {
             override fun onTick(millisUntilFinished: Long) {
-                if(millisUntilFinished - 2000 > 0L){
-                    Toast.makeText(this@MainActivity, "3", Toast.LENGTH_SHORT).show()
-                }
-                else if(millisUntilFinished - 1000 > 0L){
-                    Toast.makeText(this@MainActivity, "2", Toast.LENGTH_SHORT).show()
-                }
-                else{
-                    Toast.makeText(this@MainActivity, "1", Toast.LENGTH_SHORT).show()
+                when {
+                    millisUntilFinished - 2000 > 0L -> Toast.makeText(this@MainActivity, "3", Toast.LENGTH_SHORT).show()
+                    millisUntilFinished - 1000 > 0L -> Toast.makeText(this@MainActivity, "2", Toast.LENGTH_SHORT).show()
+                    else -> Toast.makeText(this@MainActivity, "1", Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -208,7 +214,7 @@ class MainActivity : AppCompatActivity() {
             // > 4 GB we've already made a terrible mistake.
             .putInt((wav.length() - 8).toInt()) // ChunkSize
             .putInt((wav.length() - 44).toInt()) // Subchunk2Size
-            .array();
+            .array()
 
         val accessWave: RandomAccessFile = RandomAccessFile(wav, "rw")
         //noinspection CaughtExceptionImmediatelyRethrown
@@ -216,7 +222,7 @@ class MainActivity : AppCompatActivity() {
         accessWave.seek(4)
         accessWave.write(sizes, 0, 4)
         // Subchunk2Size
-        accessWave.seek(40);
+        accessWave.seek(40)
         accessWave.write(sizes, 4, 4)
         accessWave.close()
     }
